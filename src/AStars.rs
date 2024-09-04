@@ -48,7 +48,7 @@ impl Walker {
         self.position = next_square.index;
         self.counter = 0.0;
         self.path.insert(next_square);
-        self.speed = (1.0 - next_square.potential / max_potential)*(1.0 - next_square.potential / max_potential);
+        self.speed = (1.0 - next_square.potential / max_potential).powi(4);
     }
 }
 
@@ -83,7 +83,7 @@ impl AStar {
             if let Done::Finished = walker.done {
                 break;
             }
-            if walker.counter <= 0.3 {
+            if walker.counter <= 0.01 {
                 walker.counter += walker.speed;
                 // println!("Counter: {}, speed: {}", walker.counter, walker.speed);
                 continue;
@@ -146,8 +146,8 @@ impl AStar {
             Self::flip_between(&mut self.walkers, 0, finished_walker as usize);
         }
         self.walkers.extend(new_walkers);
-        // self.walkers
-        //     .retain(|walker| walker.done != Done::NotFinished(true));
+        self.walkers
+            .retain(|walker| walker.done != Done::NotFinished(true));
     }
 
     pub fn generate_potentials(&mut self, squares: &Vec<Vec<Square>>) -> Vec<Vec<Square>> {
@@ -218,7 +218,7 @@ impl AStar {
         )
     }
 
-    fn index_to_vec2(index: (usize, usize)) -> Vec2 {
+    pub fn index_to_vec2(index: (usize, usize)) -> Vec2 {
         vec2(index.0 as f32, index.1 as f32)
     }
 

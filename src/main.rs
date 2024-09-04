@@ -74,7 +74,7 @@ fn model(app: &App) -> Model {
         restart: false,
         stop: false,
         a_star_start: (0, 0),
-        speed: 1,
+        speed: 10,
         a_star_end: (maze_size - 1, maze_size - 1),
     }
 }
@@ -146,15 +146,7 @@ fn view(app: &App, model: &Model, frame: Frame) {
     for row in potentials {
         for square in row {
             let color = if square.solid { 0.0 } else { 1.0 };
-            // println!("{}", square.potential);
             let rgb1 = 1.0-(square.potential - min_square.potential) / (model.a_star.max_potential - min_square.potential);
-            // println!("{}", rgb1);
-            // println!("{}", square.potential - min_square.potential);
-            // let mouse_index = convert_mouse_to_index(&app.mouse.position(), model.maze_size);
-            // let square2 = &model.squares[mouse_index.0][mouse_index.1];
-            // if square == square2 {
-            //     println!("{rgb1}");
-            // }
             draw.rect()
                 .xy((square.position - model.maze_size as f32 / 2.0) * (size) as f32)
                 .wh(vec2(size, size))
@@ -168,9 +160,8 @@ fn view(app: &App, model: &Model, frame: Frame) {
         }
     }
 
-    // show astar path
+    // show astar path at mouse
     for square in &model.a_star.path {
-        // println!("{:?}", square.index);
         let color = if square.solid { 0.0 } else { 0.5 };
         draw.rect()
             .xy((square.position - model.maze_size as f32 / 2.0) * size as f32)
@@ -182,6 +173,12 @@ fn view(app: &App, model: &Model, frame: Frame) {
 
     for walker in model.a_star.walkers.iter()
     {
+        draw.rect()
+            .xy((AStar::index_to_vec2(walker.position) - model.maze_size as f32 / 2.0) * size as f32)
+            .wh(vec2(size as f32, size as f32))
+            .color(hsl(1.0, 1.0, 0.5))
+            .stroke(BLACK)
+            .stroke_weight(1.0);
         let real_pos = (vec2(walker.position.0 as f32, walker.position.1 as f32) - model.maze_size as f32 / 2.0) * size;
         if (real_pos - mouse_pos).length() > size {
             continue;
@@ -197,15 +194,6 @@ fn view(app: &App, model: &Model, frame: Frame) {
                 .stroke_weight(1.0);
         }
     }
-
-    // get square under mouse and print potential
-    // let mouse_index = convert_mouse_to_index(&app.mouse.position(), model.maze_size);
-    // let square = &model.squares[mouse_index.0][mouse_index.1];
-    // println!("potential: {}", square.potential);
-
-    // draw.text(&format!("Potential: {}", square.potential))
-    //     .xy(vec2(0.0, 0.0))
-    //     .color(BLACK);
 
     draw.to_frame(app, &frame).unwrap();
     model.egui.draw_to_frame(&frame).unwrap();
