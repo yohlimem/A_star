@@ -1,5 +1,6 @@
 use crate::Squares::Square;
 use nannou::{lyon::algorithms::length, prelude::*};
+use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -22,8 +23,8 @@ pub struct Walker {
     pub position: (usize, usize), // index
     pub square: Square,
     pub path: HashSet<Square>,
-    counter: f32,
-    speed: f32,
+    // counter: f32,
+    // speed: f32,
     pub done: Done,
 }
 
@@ -33,9 +34,9 @@ impl Walker {
             position: square.index,
             square,
             path,
-            counter: 0.0,
+            // counter: 0.0,
             done: Done::NotFinished(false),
-            speed: 1.0,
+            // speed: 100.0,
         }
     }
 }
@@ -44,9 +45,9 @@ impl Walker {
     pub fn step(&mut self, next_square: Square) {
         self.square = next_square;
         self.position = next_square.index;
-        self.counter = 0.0;
+        // self.counter = 0.0;
         self.path.insert(next_square);
-        self.speed = (next_square.potential);
+        // self.speed = (next_square.potential);
     }
 }
 
@@ -63,6 +64,7 @@ impl AStar {
             Square {
                 position: vec2(start.0 as f32, start.1 as f32),
                 solid: false,
+                distance: 0.0,
                 potential: 0.0,
                 index: start,
             },
@@ -75,18 +77,27 @@ impl AStar {
     pub fn step(&mut self, squares: &Vec<Vec<Square>>) {
         let mut new_walkers: Vec<Walker> = Vec::new();
         let mut finished_walker: i32 = -1;
-        for (i, walker) in &mut self.walkers.iter_mut().enumerate() {
+        for (i, walker) in self.walkers.iter_mut().enumerate() {
             if let Done::Finished = walker.done {
                 break;
             }
-            if walker.counter <= 100.0 {
-                walker.counter += walker.speed;
-                // println!("Counter: {}, {}", walker.counter, walker.square.potential);
-                continue;
-            }
+            // if walker.counter <= 100.0 {
+            //     walker.counter += walker.speed;
+            //     println!("Counter: {}, speed: {}", walker.counter, walker.speed);
+            //     continue;
+            // }
             // println!("Step");
             let current_square = walker.square;
-            let sides: [(i32, i32); 4] = [(0, 1), (1, 0), (-1, 0), (0, -1)];
+            let sides: [(i32, i32); 4] = [
+                (0, 1),
+                (1, 0),
+                (-1, 0),
+                (0, -1),
+                // (1, 1),
+                // (-1, -1),
+                // (-1, 1),
+                // (1, -1),
+            ];
             let inside_sides: Vec<&(i32, i32)> = sides // find all sides that you can walk to
                 .iter()
                 .filter(|side| {
@@ -94,25 +105,34 @@ impl AStar {
                     !AStar::is_outside(new_indices, squares)
                 })
                 .collect::<Vec<&(i32, i32)>>();
-            let squares_around = inside_sides // find new indecies and then get all squares of those indecies
+            let mut squares_around = inside_sides // find new indecies and then get all squares of those indecies
                 .iter()
                 .map(|side| AStar::add_indecies(current_square.index, **side))
                 .map(|side| squares[side.0 as usize][side.1 as usize])
                 .filter(|square| !square.solid && !self.path.contains(&square))
                 .collect::<Vec<Square>>();
 
-            for square in 1..squares_around.len() {
+            if squares_around.len() == 0 {
+                walker.done = Done::NotFinished(true);
+                continue;
+            }
+
+            let mut min_square_distance_potential: Square = squares_around[0].clone();
+            for square in 0..squares_around.len() {
                 let current_square = squares_around[square];
+                let distance = Self::potential(self.end, &min_square_distance_potential) + Self::distance(&squares[self.start.0 as usize][self.start.1 as usize], &min_square_distance_potential);
+                let distance2 =  Self::potential(self.end, &current_square) + Self::distance(&squares[self.start.0 as usize][self.start.1 as usize], &current_square);
+
+                if distance > distance2 {
+                    min_square_distance_potential = current_square.clone();
+                }
+
                 new_walkers.push(Walker::new(current_square.clone(), walker.path.clone()));
                 self.path.insert(current_square.clone());
 
                 new_walkers.last_mut().unwrap().step(current_square.clone());
             }
-            if squares_around.len() == 0 {
-                walker.done = Done::NotFinished(true);
-                continue;
-            }
-            walker.step(squares_around[0].clone());
+            walker.step(min_square_distance_potential.clone());
             if walker.position == self.end {
                 println!("donezo");
                 finished_walker = i as i32;
@@ -124,6 +144,8 @@ impl AStar {
             Self::flip_between(&mut self.walkers, 0, finished_walker as usize);
         }
         self.walkers.extend(new_walkers);
+        // self.walkers
+        //     .retain(|walker| walker.done != Done::NotFinished(true));
     }
 
     pub fn generate_potentials(&self, squares: &Vec<Vec<Square>>) -> Vec<Vec<Square>> {
@@ -133,11 +155,7 @@ impl AStar {
             .map(|row| {
                 row.iter()
                     .map(|square| {
-                        let potential = Self::index_to_vec2(Self::sub_indecies(
-                            square.index,
-                            Self::convert_usize_i32(self.end),
-                        ))
-                        .length();
+                        let potential = Self::potential(self.end, square);
 
                         let mut new_square = square.clone();
                         new_square.potential = potential;
@@ -202,5 +220,23 @@ impl AStar {
         if index1 != index2 && index1 < items.len() && index2 < items.len() {
             items.swap(index1, index2);
         }
+    }
+
+    // fn potential(&self, square: &Square) -> f32{
+    //     Self::index_to_vec2(Self::sub_indecies(
+    //         square.index,
+    //         Self::convert_usize_i32(self.end),
+    //     )).length()
+    // }
+
+    fn potential(end: (usize, usize), square: &Square) -> f32{
+        Self::index_to_vec2(Self::sub_indecies(
+            square.index,
+            Self::convert_usize_i32(end),
+        )).length()
+    }
+
+    fn distance(square: &Square, square2: &Square) -> f32{
+        square.index.0 as f32 * square.index.0 as f32 - square2.index.0 as f32 * square2.index.0 as f32 + square.index.1 as f32 * square.index.1 as f32 - square2.index.1 as f32 * square2.index.1 as f32
     }
 }
