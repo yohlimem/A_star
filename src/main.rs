@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
 use nannou::prelude::*;
+use nannou_egui::egui::style::Widgets;
+use nannou_egui::egui::widgets;
 use nannou_egui::{self, egui, Egui};
 
 mod Squares;
@@ -16,6 +18,11 @@ struct Model {
     maze_size: usize,
     squares: Vec<Vec<Square>>,
     a_star: AStar,
+    restart: bool,
+    stop: bool,
+    a_star_start: (usize, usize),
+    a_star_end: (usize, usize),
+    speed: usize,
 }
 
 fn main() {
@@ -42,7 +49,6 @@ fn model(app: &App) -> Model {
             row.push(Square {
                 position: vec2(i as f32, j as f32),
                 solid: true,
-                distance: 0.0,
                 potential: 0.0,
                 index: (i, j),
             });
@@ -51,7 +57,7 @@ fn model(app: &App) -> Model {
     }
 
     // Create the maze using DFS
-    create_maze(&mut squares, maze_size, 0.1);
+    create_maze(&mut squares, maze_size, 0.3);
 
     let mut a_star = AStar::new((0, 0), (maze_size - 1, maze_size - 1));
     squares = a_star.generate_potentials(&squares);
@@ -65,31 +71,61 @@ fn model(app: &App) -> Model {
         squares,
         maze_size,
         a_star,
+        restart: false,
+        stop: false,
+        a_star_start: (0, 0),
+        speed: 1,
+        a_star_end: (maze_size - 1, maze_size - 1),
     }
 }
 
 fn update(app: &App, model: &mut Model, update: Update) {
-    render_egui(&mut model.egui);
+    render_egui(&mut model.egui, &mut model.restart, &mut model.stop, &mut model.speed);
 
-    // if app.elapsed_frames() % 10 == 0 {
-    // for _ in 0..10 {
-    model.a_star.step(&model.squares);
-    // println!("Step: {}", app.elapsed_frames());
-    // }
-    // }
+    if model.stop {
+        return;
+    }
+    for _ in 0..model.speed {
+        model.a_star.step(&model.squares);
+    }
+    // model.a_star.step(&model.squares);
+    if app.mouse.buttons.left().is_down() {
+        model.a_star_start = convert_mouse_to_index(&app.mouse.position(), model.maze_size);
+        model.restart = true;
+    }
+    if app.mouse.buttons.right().is_down() {
+        model.a_star_end = convert_mouse_to_index(&app.mouse.position(), model.maze_size);
+        model.restart = true;
+    }
+    if model.restart {
+        model.restart = false;
+        model.a_star = AStar::new(model.a_star_start, model.a_star_end);
+        model.squares = model.a_star.generate_potentials(&model.squares);
+    }
+
+
 
     // model.a_star.step(&model.squares)
 }
-fn render_egui(egui: &mut Egui) {
+fn render_egui(egui: &mut Egui, restart: &mut bool, stop: &mut bool, speed: &mut usize) {
     let egui = egui;
     // egui.set_elapsed_time(update.since_start);
 
     let ctx = egui.begin_frame();
 
     egui::Window::new("Rum window").show(&ctx, |ui| {
-        // ui.label("res"); // template
-        // ui.add(egui::Slider::new(&mut model.num, 1.0..=40.0));
+        ui.label("Controls");
+        let button = ui.button("Restart");
+        if button.clicked() {
+            *restart = true;
+        }
+        ui.checkbox(stop, "Stop");
+
+        ui.add(widgets::Slider::new(speed, 1..=20).text("Speed"));
+
     });
+
+
 }
 
 fn raw_window_event(_app: &App, model: &mut Model, event: &nannou::winit::event::WindowEvent) {
@@ -100,19 +136,32 @@ fn view(app: &App, model: &Model, frame: Frame) {
     let draw = app.draw();
     draw.background().color(WHITE);
     let mouse_pos = app.mouse.position();
-    let size = (1.0 / (model.maze_size as f32 / 3 as f32)) * 400.0;
+    let size = (1.0 / (model.maze_size as f32 / 3 as f32)) * 250.0;
     let potentials = &model.squares;
+    let min_square = potentials
+        .iter()
+        .flatten()
+        .min_by(|a, b| a.potential.partial_cmp(&b.potential).unwrap())
+        .unwrap();
     for row in potentials {
         for square in row {
-            let color = if square.solid { 0.0 } else { 0.5 };
+            let color = if square.solid { 0.0 } else { 1.0 };
             // println!("{}", square.potential);
+            let rgb1 = 1.0-(square.potential - min_square.potential) / (model.a_star.max_potential - min_square.potential);
+            // println!("{}", rgb1);
+            // println!("{}", square.potential - min_square.potential);
+            // let mouse_index = convert_mouse_to_index(&app.mouse.position(), model.maze_size);
+            // let square2 = &model.squares[mouse_index.0][mouse_index.1];
+            // if square == square2 {
+            //     println!("{rgb1}");
+            // }
             draw.rect()
                 .xy((square.position - model.maze_size as f32 / 2.0) * (size) as f32)
                 .wh(vec2(size, size))
                 .color(rgb(
-                    (square.distance / (model.maze_size) as f32 + 0.3) * color,
-                    (square.distance / (model.maze_size) as f32 + 0.3) * color,
-                    (square.distance / (model.maze_size) as f32 + 0.3) * color,
+                    rgb1 * color,
+                    rgb1 * color,
+                    rgb1 * color,
                 ))
                 .stroke(BLACK)
                 .stroke_weight(1.0);
@@ -126,7 +175,7 @@ fn view(app: &App, model: &Model, frame: Frame) {
         draw.rect()
             .xy((square.position - model.maze_size as f32 / 2.0) * size as f32)
             .wh(vec2(size as f32, size as f32))
-            .color(hsl(square.distance / (model.maze_size) as f32, 0.5, color))
+            .color(hsl(square.potential / (model.maze_size) as f32, 0.5, color))
             .stroke(BLACK)
             .stroke_weight(1.0);
     }
@@ -148,6 +197,15 @@ fn view(app: &App, model: &Model, frame: Frame) {
                 .stroke_weight(1.0);
         }
     }
+
+    // get square under mouse and print potential
+    // let mouse_index = convert_mouse_to_index(&app.mouse.position(), model.maze_size);
+    // let square = &model.squares[mouse_index.0][mouse_index.1];
+    // println!("potential: {}", square.potential);
+
+    // draw.text(&format!("Potential: {}", square.potential))
+    //     .xy(vec2(0.0, 0.0))
+    //     .color(BLACK);
 
     draw.to_frame(app, &frame).unwrap();
     model.egui.draw_to_frame(&frame).unwrap();
@@ -218,4 +276,15 @@ fn choose_random_square(
         return;
     }
     squares[x][y].solid = false;
+}
+
+fn convert_mouse_to_index(mouse_pos: &Vec2, maze_size: usize) -> (usize, usize) {
+    let size = (1.0 / (maze_size as f32 / 3 as f32)) * 250.0;
+    let x = (mouse_pos.x / size + 0.5 + maze_size as f32 / 2.0);
+    let y = (mouse_pos.y / size + 0.5 + maze_size as f32 / 2.0);
+    if x < 0.0 || y < 0.0 || x >= maze_size as f32 || y >= maze_size as f32 {
+        return (0, 0);
+    }
+    // println!("x: {}, y: {}", x as usize, y as usize);
+    (x as usize, y as usize)
 }

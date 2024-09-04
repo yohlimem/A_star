@@ -2,12 +2,11 @@ use std::hash::{Hash, Hasher};
 
 use nannou::prelude::*;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Square {
     pub position: Vec2,
     pub solid: bool,
     pub index: (usize, usize),
-    pub distance: f32,
     pub potential: f32,
 }
 
