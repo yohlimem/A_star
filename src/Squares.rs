@@ -7,6 +7,7 @@ pub struct Square {
     pub position: Vec2,
     pub solid: bool,
     pub index: (usize, usize),
+    pub distance: f32,
     pub potential: f32,
 }
 

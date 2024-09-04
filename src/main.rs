@@ -42,6 +42,7 @@ fn model(app: &App) -> Model {
             row.push(Square {
                 position: vec2(i as f32, j as f32),
                 solid: true,
+                distance: 0.0,
                 potential: 0.0,
                 index: (i, j),
             });
@@ -50,10 +51,14 @@ fn model(app: &App) -> Model {
     }
 
     // Create the maze using DFS
-    create_maze(&mut squares, maze_size, 500);
+    create_maze(&mut squares, maze_size, 0.1);
 
-    let a_star = AStar::new((0, 0), (maze_size - 1, maze_size - 1));
+    let mut a_star = AStar::new((0, 0), (maze_size - 1, maze_size - 1));
     squares = a_star.generate_potentials(&squares);
+
+    // for _ in maze_size..maze_size * 2 {
+    //     a_star.step(&squares);
+    // }
 
     Model {
         egui,
@@ -67,9 +72,10 @@ fn update(app: &App, model: &mut Model, update: Update) {
     render_egui(&mut model.egui);
 
     // if app.elapsed_frames() % 10 == 0 {
-    for _ in 0..10 {
-        model.a_star.step(&model.squares);
-    }
+    // for _ in 0..10 {
+    model.a_star.step(&model.squares);
+    // println!("Step: {}", app.elapsed_frames());
+    // }
     // }
 
     // model.a_star.step(&model.squares)
@@ -93,6 +99,7 @@ fn raw_window_event(_app: &App, model: &mut Model, event: &nannou::winit::event:
 fn view(app: &App, model: &Model, frame: Frame) {
     let draw = app.draw();
     draw.background().color(WHITE);
+    let mouse_pos = app.mouse.position();
     let size = (1.0 / (model.maze_size as f32 / 3 as f32)) * 400.0;
     let potentials = &model.squares;
     for row in potentials {
@@ -103,9 +110,9 @@ fn view(app: &App, model: &Model, frame: Frame) {
                 .xy((square.position - model.maze_size as f32 / 2.0) * (size) as f32)
                 .wh(vec2(size, size))
                 .color(rgb(
-                    (square.potential / (model.maze_size) as f32 + 0.3) * color,
-                    (square.potential / (model.maze_size) as f32 + 0.3) * color,
-                    (square.potential / (model.maze_size) as f32 + 0.3) * color,
+                    (square.distance / (model.maze_size) as f32 + 0.3) * color,
+                    (square.distance / (model.maze_size) as f32 + 0.3) * color,
+                    (square.distance / (model.maze_size) as f32 + 0.3) * color,
                 ))
                 .stroke(BLACK)
                 .stroke_weight(1.0);
@@ -119,28 +126,18 @@ fn view(app: &App, model: &Model, frame: Frame) {
         draw.rect()
             .xy((square.position - model.maze_size as f32 / 2.0) * size as f32)
             .wh(vec2(size as f32, size as f32))
-            .color(hsl(square.potential / (model.maze_size) as f32, 0.5, color))
+            .color(hsl(square.distance / (model.maze_size) as f32, 0.5, color))
             .stroke(BLACK)
             .stroke_weight(1.0);
     }
 
-    if model
-        .a_star
-        .walkers
-        .iter()
-        .filter(|walker| walker.done == Done::Finished)
-        .count()
-        > 0
+    for walker in model.a_star.walkers.iter()
     {
-        let path = model
-            .a_star
-            .walkers
-            .iter()
-            .filter(|walker| walker.done == Done::Finished)
-            .next()
-            .unwrap()
-            .path
-            .clone();
+        let real_pos = (vec2(walker.position.0 as f32, walker.position.1 as f32) - model.maze_size as f32 / 2.0) * size;
+        if (real_pos - mouse_pos).length() > size {
+            continue;
+        }
+        let path = walker.path.clone();
         for square in path {
             let color = if square.solid { 0.0 } else { 0.5 };
             draw.rect()
@@ -156,7 +153,7 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.egui.draw_to_frame(&frame).unwrap();
 }
 
-fn create_maze(squares: &mut Vec<Vec<Square>>, maze_size: usize, random_delete: usize) {
+fn create_maze(squares: &mut Vec<Vec<Square>>, maze_size: usize, random_delete: f32) {
     let mut rng = thread_rng();
     let mut stack = vec![];
     let start_x = rng.gen_range(0..maze_size);
@@ -190,7 +187,7 @@ fn create_maze(squares: &mut Vec<Vec<Square>>, maze_size: usize, random_delete: 
         }
     }
     // choose some random squares to be non solid
-    for _ in 0..(random_delete) {
+    for _ in 0..((maze_size * maze_size) as f32 * random_delete) as usize {
         choose_random_square(&mut rng, squares, maze_size, 0)
     }
 
